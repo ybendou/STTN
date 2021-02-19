@@ -85,7 +85,7 @@ def read_frame_from_videos(vname):
         count += 1
     return frames       
 
-
+# test
 def main_worker():
     # set up models 
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")

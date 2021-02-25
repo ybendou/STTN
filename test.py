@@ -27,17 +27,19 @@ from torchvision import transforms
 
 # My libs
 from core.utils import Stack, ToTorchFormatTensor
+import xarray as xr
 
 
 parser = argparse.ArgumentParser(description="STTN")
 parser.add_argument("-v", "--video", type=str, required=True)
 parser.add_argument("-m", "--mask",   type=str, required=True)
-parser.add_argument("-c", "--ckpt",   type=str, required=True)
+parser.add_argument("-c", "--ckpt",   type=str, default='checkpoints/sttn.pth')
 parser.add_argument("--model",   type=str, default='sttn')
 args = parser.parse_args()
 
 
-w, h = 432, 240
+w, h = 192, 192
+# w, h = 432, 240
 ref_length = 10
 neighbor_stride = 5
 default_fps = 24
@@ -84,11 +86,30 @@ def read_frame_from_videos(vname):
         success, image = vidcap.read()
         count += 1
     return frames       
+#New
+def get_ssh_gt():
+    dataset_path = '../datasets/'
+    ref_path = dataset_path + 'ref.nc'
+    xgt = xr.open_dataset(ref_path)
+    gt = xgt['ssh'].values
+    maxx = gt.max()
+    minn = gt.min()
+    transformed_ssh = (gt-minn)/(maxx-minn) # à revoir
+    # transformed_ssh =  transformed_ssh[..., np.newaxis]
+    transformed_ssh = transformed_ssh[:,5:197,5:197]
+    transformed_ssh = np.stack((transformed_ssh,)*3, axis=1)
 
-# test
+    # ssh_frames = [Image.fromarray(cv2.cvtColor(transformed_ssh[i], cv2.COLOR_BGR2RGB)) for i in range(len(transformed_ssh))]
+    
+    return torch.tensor(transformed_ssh), [transformed_ssh[i].transpose(1,2,0)*255 for i in range(len(transformed_ssh))]
+
+def get_ssh_masks():
+    pass
+
+
 def main_worker():
     # set up models 
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net = importlib.import_module('model.' + args.model)
     model = net.InpaintGenerator().to(device)
     model_path = args.ckpt
@@ -98,22 +119,37 @@ def main_worker():
     model.eval()
 
     # prepare datset, encode all frames into deep space 
-    frames = read_frame_from_videos(args.video)
+    # frames = read_frame_from_videos(args.video)
+    # feats = _to_tensors(frames).unsqueeze(0)*2-1
+    feats, frames = get_ssh_gt()
+    print('frames shape :', frames[0].shape)
+    feats = feats.unsqueeze(0)*2-1
+    # print('feats shape :', feats.shape)
+    # print('feats ssh shape :', feats_ssh.shape)
+    # print('feats diff :', abs(feats-feats_ssh).sum()/(feats.shape[0]*feats.shape[1]))
+    # print('feats : ', feats[0][4])
+    # print('feats ssh : ', feats_ssh[0][4])
+
+
     video_length = len(frames)
-    feats = _to_tensors(frames).unsqueeze(0)*2-1
+
     frames = [np.array(f).astype(np.uint8) for f in frames]
 
     masks = read_mask(args.mask)
     binary_masks = [np.expand_dims((np.array(m) != 0).astype(np.uint8), 2) for m in masks]
     masks = _to_tensors(masks).unsqueeze(0)
-    feats, masks = feats.to(device), masks.to(device)
+    feats, masks = feats.to(device, dtype=torch.float), masks.to(device, dtype=torch.float)
     comp_frames = [None]*video_length
+
+    print('feats size :', feats.size())
+    print('masks size :', masks.size())
 
     with torch.no_grad():
         feats = model.encoder((feats*(1-masks).float()).view(video_length, 3, h, w))
         _, c, feat_h, feat_w = feats.size()
         feats = feats.view(1, video_length, c, feat_h, feat_w)
     print('loading videos and masks from: {}'.format(args.video))
+    print('feats output :',feats.shape)
 
     # completing holes by spatial-temporal transformers
     for f in range(0, video_length, neighbor_stride):

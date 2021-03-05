@@ -64,14 +64,15 @@ def read_mask(mpath):
     mnames = os.listdir(mpath)
     mnames.sort()
     for m in mnames: 
-        m = Image.open(os.path.join(mpath, m))
-        m = m.resize((w, h), Image.NEAREST)
-        m = np.array(m.convert('L'))
-        m = np.array(m > 0).astype(np.uint8)
-        m = cv2.dilate(m, cv2.getStructuringElement(
-            cv2.MORPH_CROSS, (3, 3)), iterations=4)
-        masks.append(Image.fromarray(m*255))
-    return masks
+        if 'ipynb' not in m:
+            m = Image.open(os.path.join(mpath, m))
+            m = m.resize((w, h), Image.NEAREST)
+            m = np.array(m.convert('L'))
+            m = np.array(m > 0).astype(np.uint8)
+            m = cv2.dilate(m, cv2.getStructuringElement(
+                cv2.MORPH_CROSS, (3, 3)), iterations=4)
+            masks.append(Image.fromarray(m*255))
+    return masks[:]
 
 
 #  read frames from video 
@@ -118,12 +119,18 @@ def main_worker():
     print('loading from: {}'.format(args.ckpt))
     model.eval()
 
+    masks = read_mask(args.mask)
+    
     # prepare datset, encode all frames into deep space 
-    # frames = read_frame_from_videos(args.video)
-    # feats = _to_tensors(frames).unsqueeze(0)*2-1
-    feats, frames = get_ssh_gt()
-    print('frames shape :', frames[0].shape)
-    feats = feats.unsqueeze(0)*2-1
+    frames = read_frame_from_videos(args.video)
+    
+    len_video = min(len(masks),len(frames))
+    frames = frames[:len_video]
+    masks = masks[:len_video]
+    feats = _to_tensors(frames).unsqueeze(0)*2-1
+#     feats, frames = get_ssh_gt()
+#     print('frames shape :', frames[0].shape)
+#     feats = feats.unsqueeze(0)*2-1
     # print('feats shape :', feats.shape)
     # print('feats ssh shape :', feats_ssh.shape)
     # print('feats diff :', abs(feats-feats_ssh).sum()/(feats.shape[0]*feats.shape[1]))
@@ -135,12 +142,12 @@ def main_worker():
 
     frames = [np.array(f).astype(np.uint8) for f in frames]
 
-    masks = read_mask(args.mask)
+   
     binary_masks = [np.expand_dims((np.array(m) != 0).astype(np.uint8), 2) for m in masks]
     masks = _to_tensors(masks).unsqueeze(0)
     feats, masks = feats.to(device, dtype=torch.float), masks.to(device, dtype=torch.float)
     comp_frames = [None]*video_length
-
+    print('video length :',video_length)
     print('feats size :', feats.size())
     print('masks size :', masks.size())
 

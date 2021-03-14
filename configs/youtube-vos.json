@@ -4,8 +4,8 @@
     "data_loader": {
         "name": "youtube-vos",
         "data_root": "datasets/",
-        "w": 432,
-        "h": 240,
+        "w": 192,
+        "h": 192,
         "sample_length": 5
     },
     "losses": {

@@ -29,6 +29,7 @@ class Dataset(torch.utils.data.Dataset):
         with open(os.path.join(args['data_root'], args['name'], split+'.json'), 'r') as f:
             self.video_dict = json.load(f)
         self.video_names = list(self.video_dict.keys())
+        mypath = '/mnt/groupadiag302/Transformers/Project_UEH_data/youtube-vos/JPEGImages'
         existing_dirs = [f for f in listdir(mypath)]
         self.video_names = [f for f in self.video_names if f in existing_dirs]
         if debug or split != 'train':
@@ -46,27 +47,39 @@ class Dataset(torch.utils.data.Dataset):
             item = self.load_item(index)
         except:
             print('Loading error in video {}'.format(self.video_names[index]))
+            video_name = self.video_names[index]
+            all_frames = [f"{str(i).zfill(5)}.jpg" for i in range(self.video_dict[video_name])]
+            print('all frames',all_frames)
             item = self.load_item(0)
         return item
 
     def load_item(self, index):
         video_name = self.video_names[index]
-        all_frames = [f"{str(i).zfill(5)}.jpg" for i in range(self.video_dict[video_name])]
+        #all_frames = [f"{str(i).zfill(5)}.jpg" for i in range(self.video_dict[video_name])]
+        path = '/mnt/groupadiag302/Transformers/Project_UEH_data/{}/JPEGImages/{}'.format(
+               self.args['name'], video_name)
+        all_frames = [f for f in listdir(path)]
+        #all_frames = [f for f in all_frames if f in existing_files]
 #         all_masks = create_random_shape_with_random_motion(
 #             len(all_frames), imageHeight=self.h, imageWidth=self.w)
-        all_masks = read_mask(mask_path)
+        mask_path = 'ssh_examples'
+        all_masks = read_mask(mask_path, self.w, self.h)
         len_video = min(len(all_masks),len(all_frames))
 
         all_frames = all_frames[:len_video]
         all_masks  = all_masks[:len_video]
-
+        
         ref_index = get_ref_index(len(all_frames), self.sample_length)
         # read video frames
         frames = []
         masks = []
         for idx in ref_index:
-            img = ZipReader.imread('{}/{}/JPEGImages/{}.zip'.format(
-                self.args['data_root'], self.args['name'], video_name), all_frames[idx]).convert('RGB')
+#             img = ZipReader.imread('{}/{}/JPEGImages/{}.zip'.format(
+#                 self.args['data_root'], self.args['name'], video_name), all_frames[idx]).convert('RGB')
+
+            img = Image.open('/mnt/groupadiag302/Transformers/Project_UEH_data/{}/JPEGImages/{}/{}'.format(
+                self.args['name'], video_name, all_frames[idx])).convert('RGB')
+                        
             img = img.resize(self.size)
             frames.append(img)
             masks.append(all_masks[idx])
@@ -81,16 +94,26 @@ class Dataset(torch.utils.data.Dataset):
 
 
 def get_ref_index(length, sample_length):
-    if random.uniform(0, 1) > 0.5:
-        ref_index = random.sample(range(length), sample_length)
-        ref_index.sort()
-    else:
-        pivot = random.randint(0, length-sample_length)
-        ref_index = [pivot+i for i in range(sample_length)]
+    #if random.uniform(0, 1) > 0.5:
+    #sample_length = min(length, sample_length)
+    if sample_length > length : print('sample_length',sample_length, length)
+    ref_index = random.sample(range(length), sample_length)
+    ref_index.sort()
+    #else:
+    #    pivot = random.randint(0, length-sample_length)
+    #    ref_index = [pivot+i for i in range(sample_length)]
     return ref_index
 
+
+
+# def get_ref_index(list_, sample_length):
+#     ref_index = random.sample(list_, sample_length)
+#     ref_index.sort()
+
+#     return ref_index
+
 ### My functions
-def read_mask(mpath):
+def read_mask(mpath, w, h):
     masks = []
     mnames = os.listdir(mpath)
     mnames.sort()
@@ -107,9 +130,11 @@ def read_mask(mpath):
 
 
 def add_neighboring_masks(masks, window=1):
+    masks_ = masks*1
+    len_video = len(masks)
     window = 1
     for i in range(len_video):
         for w_ in range(-window, window+1):
             if len_video-1>=i+w_ >=0 :
-                masks[i] *= masks[i+w_]
-    return masks
+                masks_[i] *= masks[i+w_]
+    return masks_

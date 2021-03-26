@@ -124,6 +124,19 @@ class Trainer():
             self.summary[name] = 0
 
     # load netG and netD
+#     def load(self): # change to load model weights in checkpoint folder
+
+#         model_path = 'checkpoints' #self.config['save_dir']
+    
+
+#         gen_path = os.path.join(model_path, 'sttn.pth')                  
+#         data = torch.load(gen_path, map_location=self.config['device'])
+#         self.netG.load_state_dict(data['netG'])
+#         print('Generator weights loaded')
+# #         else:
+# #             if self.config['global_rank'] == 0:
+# #                 print(
+# #                     'Warnning: There is no trained model found. An initialized model will be used.')
     def load(self):
         model_path = self.config['save_dir']
         if os.path.isfile(os.path.join(model_path, 'latest.ckpt')):
@@ -156,7 +169,6 @@ class Trainer():
             if self.config['global_rank'] == 0:
                 print(
                     'Warnning: There is no trained model found. An initialized model will be used.')
-
     # save parameters every eval_epoch
     def save(self, it):
         if self.config['global_rank'] == 0:
@@ -181,6 +193,14 @@ class Trainer():
                         'optimD': self.optimD.state_dict()}, opt_path)
             os.system('echo {} > {}'.format(str(it).zfill(5),
                                             os.path.join(self.config['save_dir'], 'latest.ckpt')))
+            print('Removing files :', os.path.join(
+                self.config['save_dir'], 'gen_{}.pth'.format(str(it-1).zfill(5))))
+            os.remove(os.path.join(
+                self.config['save_dir'], 'gen_{}.pth'.format(str(it-1).zfill(5))))
+            os.remove(os.path.join(
+                self.config['save_dir'], 'dis_{}.pth'.format(str(it-1).zfill(5))))
+            os.remove(os.path.join(
+                self.config['save_dir'], 'opt_{}.pth'.format(str(it-1).zfill(5))))
 
     # train entry
     def train(self):
